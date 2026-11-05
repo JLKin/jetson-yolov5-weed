@@ -2,8 +2,10 @@ name: checks
 on: [push, pull_request]
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    # Keep Python 3.8 available for the user's JetPack 5 environment.
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         python: ['3.8', '3.10', '3.12']
     steps:
