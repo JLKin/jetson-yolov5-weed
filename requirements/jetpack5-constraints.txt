@@ -1,0 +1,2 @@
+# TensorRT 8.5's Python dtype conversion uses np.bool, removed in NumPy 1.24.
+numpy==1.23.5

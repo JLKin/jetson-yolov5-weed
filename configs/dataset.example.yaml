@@ -1,0 +1,7 @@
+# Relative path is resolved against this YAML file, not the working directory.
+path: ../datasets/weeds
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: weed

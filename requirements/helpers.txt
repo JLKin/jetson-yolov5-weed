@@ -1,0 +1,4 @@
+# Install with --no-deps: never replace Jetson's torch/torchvision/OpenCV.
+# YOLOv5 uses utility functions from this package, not its YOLOv5u models.
+ultralytics==8.4.192
+ultralytics-thop==2.2.3

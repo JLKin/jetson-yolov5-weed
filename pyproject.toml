@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jetson-yolov5-weed"
+version = "0.1.0"
+description = "YOLOv5 weed detection training and Jetson deployment"
+requires-python = ">=3.8"
+dependencies = ["PyYAML>=6", "Pillow>=10.3", "numpy>=1.23.5"]
+
+[project.scripts]
+weed = "weed_detector.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["weed_detector*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

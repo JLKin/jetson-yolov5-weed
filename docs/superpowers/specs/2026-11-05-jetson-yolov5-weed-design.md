@@ -8,7 +8,7 @@
 2. 训练：电脑 CUDA 优先，提供低批量的 Jetson 配置。调用固定版本上游 train.py，保存 best.pt / last.pt、CSV 和图表，支持断点续训；提供独立 val/test 评估入口。
 3. 推理：图片、图片目录、本地视频、USB 相机、RTSP 视频流共用模型与结果输出。相机以解码后的帧输入；没有真实 C10pro 时以文件验证，实际厂家、码流与协议仍需设备资料确认。
 4. 结果：原图坐标系检测框、类别、置信度、UTC 接收时间、帧序号、视频时间、推理耗时；JSONL 每帧一行（包括零检测），CSV 每目标一行；可视化图片／分段视频和 summary.json。逐帧检测数不能当作去重植株数量。
-5. 加速：PyTorch 为基线；导出 ONNX，再在目标 Jetson 上构建 TensorRT。固定上游版本并检查 TensorRT 接口兼容性；模型旁保存类别元数据。目标板实际 JetPack 未提供，不能宣称已实测。
+5. 加速：PyTorch 为基线；导出 ONNX，再在目标 Jetson 上构建 TensorRT。固定上游版本并检查 TensorRT 接口兼容性；模型旁保存类别元数据。目标板已确认 Orin Nano Developer Kit、L4T 35.5.0 / JetPack 5.1.3、Python 3.8.10；APT 缺少 libnvinfer8，安装和运行尚未实测。
 6. 部署：环境诊断、Windows / Jetson 安装脚本、GitHub clone / pull 文档。数据、训练输出、权重、凭据默认不进入 Git；训练权重通过文件传输或显式发布的 Release 分发。GitHub 默认私有仓库，沿用已缓存账户。
 
 ## 组件
