@@ -20,6 +20,8 @@ class OutputTests(unittest.TestCase):
             writer = ResultWriter(temp, visual=False)
             writer.write(frame, [], 2)
             frame.index = 1
+            frame.quality = {"flags": ["blur_risk", "highlight_risk"]}
+            frame.preprocessing_ms = 1.5
             writer.write(frame, [{"class_id": 0, "class_name": "杂草", "confidence": .9, "bbox_xyxy": [20, 10, 100, 80]}], 4)
             writer.close("failed", "test failure")
             writer.close()
@@ -33,6 +35,9 @@ class OutputTests(unittest.TestCase):
             summary = json.loads((Path(temp) / "summary.json").read_text())
             self.assertEqual(summary["status"], "failed")
             self.assertEqual(summary["mean_inference_ms"], 3)
+            self.assertEqual(records[1]["schema_version"], 2)
+            self.assertEqual(summary["quality_flag_frames"], {"blur_risk": 1, "highlight_risk": 1})
+            self.assertIn("blur_risk", rows[0]["quality_flags"])
 
     def test_run_paths_cannot_escape_project_or_overwrite(self):
         with tempfile.TemporaryDirectory() as temp:

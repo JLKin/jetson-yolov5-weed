@@ -8,7 +8,8 @@ from pathlib import Path
 from .common import utc_now, write_json
 
 CSV_COLUMNS = ["frame_index", "captured_at", "media_time_ms", "source", "width", "height",
-               "class_id", "class_name", "confidence", "x1", "y1", "x2", "y2", "inference_ms"]
+               "class_id", "class_name", "confidence", "x1", "y1", "x2", "y2", "inference_ms",
+               "preprocessing_ms", "quality_flags"]
 
 
 class ResultWriter:
@@ -24,14 +25,17 @@ class ResultWriter:
         self.video, self.video_shape, self.video_frames, self.segment = None, None, 0, 0
         self.started, self.started_at = time.perf_counter(), utc_now()
         self.frames, self.objects, self.ms = 0, Counter(), 0.0
+        self.quality_flags, self.preprocessing_ms = Counter(), 0.0
         self.closed = False
 
     def write(self, frame, detections, inference_ms):
         height, width = frame.image.shape[:2]
         base = {"frame_index": frame.index, "captured_at": frame.captured_at,
                 "media_time_ms": frame.media_time_ms, "source": frame.source,
-                "width": width, "height": height, "inference_ms": round(inference_ms, 3)}
-        record = {"schema_version": 1, **base, "detection_count": len(detections), "detections": detections}
+                "width": width, "height": height, "inference_ms": round(inference_ms, 3),
+                "preprocessing_ms": round(frame.preprocessing_ms, 3),
+                "quality_flags": "|".join((frame.quality or {}).get("flags", []))}
+        record = {"schema_version": 2, **base, "quality": frame.quality, "detection_count": len(detections), "detections": detections}
         self.jsonl.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
         for detection in detections:
             x1, y1, x2, y2 = detection["bbox_xyxy"]
@@ -42,6 +46,8 @@ class ResultWriter:
         self.csv_file.flush()
         self.frames += 1
         self.ms += inference_ms
+        self.preprocessing_ms += frame.preprocessing_ms
+        self.quality_flags.update((frame.quality or {}).get("flags", []))
         if self.visual:
             self._visual(frame, detections)
 
@@ -90,7 +96,9 @@ class ResultWriter:
                    "count_note": "Per-frame detections; not unique plants or tracked objects.",
                    "elapsed_seconds": round(elapsed, 3),
                    "processed_fps": round(self.frames / elapsed, 3) if elapsed else 0,
-                   "mean_inference_ms": round(self.ms / self.frames, 3) if self.frames else None}
+                   "mean_inference_ms": round(self.ms / self.frames, 3) if self.frames else None,
+                   "mean_preprocessing_ms": round(self.preprocessing_ms / self.frames, 3) if self.frames else None,
+                   "quality_flag_frames": dict(self.quality_flags)}
         if error:
             summary["error"] = error
         write_json(self.directory / "summary.json", summary)

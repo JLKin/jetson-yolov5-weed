@@ -11,24 +11,33 @@ def infer(args):
     from .backend import Detector
     from .results import ResultWriter
     from .sources import frames, safe_source
+    from .vision import FrameProcessor, restore_detections
 
     source = args.source or os.environ.get("CAMERA_SOURCE")
     if not source:
         raise ValueError("Provide --source or set CAMERA_SOURCE")
     if args.max_frames is not None and args.max_frames < 1:
         raise ValueError("--max-frames must be at least 1")
+    processor = FrameProcessor(args.mirror, args.enhance, args.gamma, not args.no_quality,
+                               args.blur_threshold, args.highlight_threshold)
     detector = Detector(args.weights, args.device, args.imgsz, args.conf, args.iou, args.half, args.data, args.max_det)
     directory = new_run(args.project, args.name)
     write_json(directory / "run.json", {"weights": str(args.weights), "source": safe_source(source),
                                         "imgsz": detector.imgsz, "confidence": args.conf, "iou": args.iou,
-                                        "device": args.device, "names": detector.names})
+                                        "device": args.device, "names": detector.names,
+                                        "image_processing": {"mirror": args.mirror, "enhance": args.enhance,
+                                                             "gamma": args.gamma, "quality_enabled": not args.no_quality,
+                                                             "blur_threshold": args.blur_threshold,
+                                                             "highlight_threshold": args.highlight_threshold}})
     iterator = frames(source, args.timeout, args.reconnects)
     writer = ResultWriter(directory, not args.no_visual, args.segment_seconds, args.output_fps)
     status, failure = "completed", None
     print(f"Results: {directory}", flush=True)
     try:
         for frame in iterator:
-            detections, milliseconds = detector.predict(frame.image)
+            image, frame.quality, frame.preprocessing_ms = processor.apply(frame.image)
+            detections, milliseconds = detector.predict(image)
+            detections = restore_detections(detections, frame.image.shape[1], frame.image.shape[0], args.mirror)
             writer.write(frame, detections, milliseconds)
             if writer.frames == 1 or writer.frames % 100 == 0:
                 logging.info("Processed %d frames; current detections=%d, inference=%.1f ms", writer.frames, len(detections), milliseconds)
@@ -68,6 +77,33 @@ def doctor(args):
         raise SystemExit(1)
 
 
+def augment_data(args):
+    from .augmentation import augment_command
+    augment_command(args)
+
+
+def benchmark(args):
+    from .benchmarks import benchmark as run
+    run(args)
+
+
+def compare_models(args):
+    from .benchmarks import compare_models as run
+    run(args)
+
+
+def stress_test(args):
+    from .stress import stress_test as run
+    run(args)
+
+
+def image_processing_arguments(p):
+    p.add_argument("--mirror", choices=["none", "horizontal", "vertical", "both"], default="none")
+    p.add_argument("--enhance", choices=["none", "clahe", "gamma"], default="none")
+    p.add_argument("--gamma", type=float, default=1.0, help="Gamma exponent; below 1 brightens")
+    p.add_argument("--no-quality", action="store_true", help="Disable per-frame quality diagnostics")
+
+
 def parser():
     from . import workflows
     root = argparse.ArgumentParser(description="YOLOv5 weed detector: train, evaluate and deploy to Jetson")
@@ -86,10 +122,21 @@ def parser():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--group-regex", help="Regex with a capture group for scene/sequence ID")
     p.set_defaults(handler=prepare_data)
+    conditions = ["glare", "gaussian-blur", "motion-blur", "mirror-horizontal", "mirror-vertical", "dark", "jpeg"]
+    p = sub.add_parser("augment-data", help="Augment train only; preserve original val/test files and synchronize mirror labels")
+    p.add_argument("--data", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--conditions", nargs="+", choices=conditions,
+                   default=["glare", "gaussian-blur", "motion-blur", "mirror-horizontal", "dark", "jpeg"])
+    p.add_argument("--copies", type=int, default=2)
+    p.add_argument("--severity", type=float, default=.4)
+    p.add_argument("--seed", type=int, default=42)
+    p.set_defaults(handler=augment_data)
     p = sub.add_parser("train", help="Train on PC or Jetson; use batch 2/workers 0 on Jetson initially")
     p.add_argument("--data")
     p.add_argument("--model", choices=["yolov5n", "yolov5s", "yolov5m"], default="yolov5s")
     p.add_argument("--weights")
+    p.add_argument("--hyp", help="YOLOv5 training hyperparameters, e.g. configs/hyp.weeds.yaml")
     p.add_argument("--scratch", action="store_true")
     p.add_argument("--resume", help="Resume last.pt using the original run's training settings")
     p.add_argument("--epochs", type=int, default=100)
@@ -129,6 +176,9 @@ def parser():
     p.add_argument("--reconnects", type=int, default=5)
     p.add_argument("--segment-seconds", type=float, default=60)
     p.add_argument("--output-fps", type=float)
+    image_processing_arguments(p)
+    p.add_argument("--blur-threshold", type=float, default=60.0)
+    p.add_argument("--highlight-threshold", type=float, default=.05)
     p.add_argument("--project", default=str(ROOT / "runs" / "infer"))
     p.add_argument("--name", default="weed")
     p.set_defaults(handler=infer)
@@ -146,6 +196,47 @@ def parser():
     p.add_argument("--weights", required=True)
     p.add_argument("--output", required=True)
     p.set_defaults(handler=workflows.package_model)
+    p = sub.add_parser("benchmark", help="Measure warmed batch-1 PT/TensorRT pipeline latency, excluding decode/write")
+    p.add_argument("--weights", required=True)
+    p.add_argument("--source", required=True, help="Image or image directory")
+    p.add_argument("--data", help="Class names YAML, required for engines")
+    p.add_argument("--device", default="0")
+    p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--conf", type=float, default=.25)
+    p.add_argument("--half", action="store_true")
+    p.add_argument("--warmup", type=int, default=10)
+    p.add_argument("--iterations", type=int, default=100)
+    p.add_argument("--images", type=int, default=8)
+    image_processing_arguments(p)
+    p.add_argument("--project", default=str(ROOT / "runs" / "benchmark"))
+    p.add_argument("--name", default="weed")
+    p.set_defaults(handler=benchmark)
+    p = sub.add_parser("compare-models", help="Check precision regression with identical production preprocessing")
+    p.add_argument("--reference", required=True, help="Baseline .pt model")
+    p.add_argument("--candidate", required=True, help="Candidate .pt or .engine")
+    p.add_argument("--data", required=True)
+    p.add_argument("--split", choices=["val", "test"], default="val")
+    p.add_argument("--device", default="0")
+    p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--max-map-drop", type=float, default=.01)
+    p.add_argument("--max-recall-drop", type=float, default=.02)
+    p.add_argument("--require-pass", action="store_true")
+    p.add_argument("--project", default=str(ROOT / "runs" / "compare"))
+    p.add_argument("--name", default="weed")
+    p.set_defaults(handler=compare_models)
+    p = sub.add_parser("stress-test", help="Evaluate baseline, glare, blur and mirrors on labeled held-out data")
+    p.add_argument("--weights", required=True)
+    p.add_argument("--data", required=True)
+    p.add_argument("--split", choices=["val", "test"], default="val")
+    p.add_argument("--conditions", nargs="+", choices=conditions,
+                   default=["glare", "gaussian-blur", "motion-blur", "mirror-horizontal"])
+    p.add_argument("--severity", type=float, default=.4)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--device", default="0")
+    p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--project", default=str(ROOT / "runs" / "stress"))
+    p.add_argument("--name", default="weed")
+    p.set_defaults(handler=stress_test)
     return root
 
 

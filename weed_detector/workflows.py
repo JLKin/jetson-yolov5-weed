@@ -35,6 +35,11 @@ def train(args):
                "--project", directory.parent, "--name", directory.name, "--exist-ok", "--seed", args.seed]
     if args.scratch:
         command += ["--cfg", UPSTREAM / "models" / f"{args.model}.yaml"]
+    if args.hyp:
+        hyp = Path(args.hyp).resolve()
+        if not hyp.is_file():
+            raise ValueError(f"Hyperparameter file not found: {hyp}")
+        command += ["--hyp", hyp]
     run_upstream("train.py", command)
     best = directory / "weights" / "best.pt"
     if not best.is_file():
@@ -100,7 +105,12 @@ def export_model(args):
     if not artifact.is_file() or artifact.stat().st_size == 0:
         raise RuntimeError("Export did not produce a valid artifact; upstream may have reported an export error")
     import torch
-    write_json(directory / "export.json", {"yolov5_commit": YOLOV5_COMMIT, "created_at": utc_now(),
+    environment = {"gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}
+    if args.format == "engine":
+        environment["tensorrt"] = trt.__version__
+        release = Path("/etc/nv_tegra_release")
+        environment["l4t"] = release.read_text().strip() if release.is_file() else None
+    write_json(directory / "export.json", {"yolov5_commit": YOLOV5_COMMIT, "created_at": utc_now(), **environment,
                                            "imgsz": args.imgsz, "batch": 1, "format": args.format,
                                            "half": args.half, "torch": torch.__version__,
                                            "cuda": torch.version.cuda,

@@ -27,6 +27,7 @@ cd jetson-yolov5-weed
 - **当前电脑**：[Windows 安装和训练](docs/windows.md)。
 - **当前 Jetson（JetPack 5.1.3）**：[Jetson 安装和部署](docs/jetson.md)。
 - **相机**：[C10pro 接入与断流排查](docs/camera.md)。
+- **反光、模糊、镜像与加速验收**：[复杂画面处理、训练增强、TensorRT 精度与延迟测试](docs/robustness.md)。
 
 安装后，在项目根目录、已激活的项目虚拟环境中运行：
 
@@ -118,6 +119,8 @@ RTSP 地址可通过环境变量 `CAMERA_SOURCE` 提供，详见相机文档。�
 | `frame_*.jpg` / `annotated_*.mp4` | 带框图片／分段视频，可用 `--no-visual` 关闭 |
 | `summary.json` | 运行状态、累计逐帧检测数、平均耗时、处理帧率 |
 | `run.json` | 类别表、阈值、模型路径及脱敏输入信息 |
+
+新增 `augment-data`、`stress-test`、`compare-models` 和 `benchmark` 命令。推理默认记录模糊／高光质量风险；可选 `--mirror horizontal`、`--enhance clahe` 或 `--enhance gamma --gamma 0.8`，具体用途和边界见复杂画面处理文档。JSONL schema=2 保留原字段，并增加质量标记与预处理耗时。
 
 `bbox_xyxy` 是原始图像像素坐标；`captured_at` 是 Jetson/电脑接收帧的 UTC 时间，**不是相机曝光时间**。本地视频另有按帧率换算的 `media_time_ms`，实时流为 null。实时输入只保留最新帧，帧序号可以跳跃。录像为固定输出帧率，丢帧时播放速度可能与现场不同；JSONL 时间戳是事件对齐依据。
 

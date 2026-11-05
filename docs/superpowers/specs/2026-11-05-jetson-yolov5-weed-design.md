@@ -34,6 +34,16 @@
 4. 安装脚本、中文部署文档、CI。
 5. 本机测试、代码审查、提交并上传 GitHub，核验远程。
 
+## 用户追加：TensorRT 与复杂光照／运动画面
+
+2026-11-05 用户要求进一步考虑 TensorRT 加速及反光、模糊、镜像。沿用现有架构增加：
+
+- 训练集离线增强，保留 val/test 原始文件，镜像同步处理标注；另提供在线训练超参数入口。
+- 默认仅记录图像质量；可选指定镜像、CLAHE 或 Gamma，检测框回到原始输入坐标；不承诺恢复严重过曝／模糊丢失的细节。
+- 合成条件逐项压力测试，输出分类指标；真实特殊场景需独立现场样本。
+- TensorRT FP16 与 PT FP32 使用同一生产推理预处理路径比较 mAP/recall；以预热后的平均和 P95 延迟衡量性能，明确排除取流、解码和写盘的测量范围。
+- 本机可验证功能与对照流程，Jetson TensorRT 的加速倍数和精度只能在补齐其计算组件后实测。
+
 参考：
 - https://github.com/ultralytics/yolov5
 - https://docs.ultralytics.com/yolov5/tutorials/train-custom-data/

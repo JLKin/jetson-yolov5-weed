@@ -34,6 +34,8 @@ class Frame:
     media_time_ms: float | None
     fps: float
     is_image: bool = False
+    quality: dict | None = None
+    preprocessing_ms: float = 0.0
 
 
 def readable_image(path):
